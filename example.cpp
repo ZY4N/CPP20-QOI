@@ -8,7 +8,7 @@ int main() {
 	// load and decode qoi
 	uint32_t width, height; uint8_t channels, colorspace;
 	fileInputStream is("input.qoi");
-	u8* pixels = qoi::decode(is, &width, &height, &channels, &colorspace);
+	uint8_t* pixels = qoi::decode(is, &width, &height, &channels, &colorspace);
 	is.close();
 
 	// safe to png using stb
@@ -19,6 +19,8 @@ int main() {
 	qoi::encode(os, pixels, width, height, 4);
 	os.flush();
 	os.close();
+
+	delete[] pixels;
 
 	return 0;
 }

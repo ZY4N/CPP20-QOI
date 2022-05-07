@@ -10,7 +10,7 @@
 #define STBI_MSC_SECURE_CRT
 #define STB_IMAGE_WRITE_STATIC
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
+#include "../stb/stb_image_write.h"
 
 #if defined(__GNUC__) || defined(__GNUG__)
 #pragma GCC diagnostic pop 
