@@ -106,7 +106,7 @@ void encode(OS& os, const u8* raw, u32 width, u32 height, u8 channels, u8 colors
 		pixel = pixels[i];
 
 		if (pixel == pPixel) {
-			if (runLength++ == MAX_RUN_SIZE) {
+			if (runLength++ == MAX_RUN_SIZE || i == numPixels - 1) {
 				write<tag::RUN>(os, runLength - 1);
 				runLength = 0;
 			}
