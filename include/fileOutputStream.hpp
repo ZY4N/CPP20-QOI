@@ -34,9 +34,13 @@ struct fileOutputStream {
 
 	template<typename T>
 	inline fileOutputStream& operator<<(const T& src) {
-		if constexpr (sizeof(src) == 1) {
+		if constexpr (sizeof(T) == 1) {
 			if (index == sizeof(buffer)) flush();
 			buffer[index++] = (char)src;
+		} else if constexpr (sizeof(T) == 4) {
+			if (sizeof(T) > sizeof(buffer) - index) flush();
+			*((uint32_t*)(buffer + index)) = *(const uint32_t*)&src;
+			index += sizeof(T); 
 		} else {
 			const char* srcBytes = reinterpret_cast<const char*>(&src);
 			size_t bytesCopied;

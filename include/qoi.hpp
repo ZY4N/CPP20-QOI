@@ -20,7 +20,8 @@ typedef size_t			ux;
 
 namespace qoi {
 
-constexpr char magic[4]{ 'q', 'o', 'i', 'f' };
+constexpr char magic[]{ 'q', 'o', 'i', 'f' };
+constexpr char end[]{ 0, 0, 0, 1 };
 
 constexpr ux LOOKUP_SIZE	= 64;
 constexpr ux MAX_RUN_SIZE	= 62;
@@ -67,8 +68,7 @@ force_inline void write(OS& os, Args&&... args) {
 		const color& pixel = getArg(0);
 		os << firstByte << pixel.r << pixel.g << pixel.b;
 	} else if constexpr (T == RGBA) {
-		os << firstByte;
-		os << getArg(0);
+		os << firstByte << getArg(0);
 	} else if constexpr (T == INDEX || T == RUN || T == LUMA) {
 		os << (u8)(firstByte | ((u8)getArg(0) & 0x3f));
 		if constexpr (T == LUMA) {
@@ -140,15 +140,13 @@ void encode(OS& os, const u8* raw, u32 width, u32 height, u8 channels, u8 colors
 				continue;
 			}
 		}
-
 		if (channels == 4) {
 			write<tag::RGBA>(os, pixel);
 		} else {
 			write<tag::RGB>(os, pixel);
 		}
 	}
-	// DIFF with 0 on all channels can never happen -> end_tag
-	write<tag::DIFF>(os, (u8)2, (u8)2, (u8)2);
+	os << 0 << end;
 }
 
 template<class IS>
@@ -158,52 +156,54 @@ u8* decode(IS& is, u32* width, u32* height, u8* channels, u8* colorspace) {
 
 	char maybeMagic[4];
 	is >> maybeMagic;
+	if (std::strncmp(maybeMagic, magic, sizeof(magic)))
+		throw std::runtime_error("Wrong file format");
+
 	is >> *width;
 	is >> *height;
 	is >> *channels;
 	is >> *colorspace;
 
-	color* dst = new color[*width * *height];
-	color* dstIt = dst;
+	ux numPixels = *width * *height;
+	color* dst = new color[numPixels];
+	const color* end = dst + numPixels;
+
 	color& pPixel = *dst; 
 
-	u8 cByte, endTag = 0b01101010;
-	for (is >> cByte; cByte != endTag; is >> cByte) {
+	for (color* it = dst; it <= end; it++) {
+		u8 nextByte; is >> nextByte;
 		using enum tag;
-		if (cByte == (u8)RGB) {
-			is >> dstIt->r;
-			is >> dstIt->g;
-			is >> dstIt->b;
-		} else if (cByte == (u8)RGBA) {
-			is >> *dstIt;
+		if (nextByte == (u8)RGB) {
+			is >> it->r >> it->g >> it->b; it->a = 255;
+		} else if (nextByte == (u8)RGBA) {
+			is >> *it;
 		} else {
-			const tag t = (tag)(cByte & 0xc0);
+			const tag t = (tag)(nextByte & 0xc0);
 			if (t == tag::DIFF) {
-				dstIt->r = pPixel.r + (u8)(((cByte >> 4) & 3) - 2);
-				dstIt->g = pPixel.g + (u8)(((cByte >> 2) & 3) - 2);
-				dstIt->b = pPixel.b + (u8)(((cByte >> 0) & 3) - 2);
-				dstIt->a = pPixel.a;
+				it->r = pPixel.r + (u8)(((nextByte >> 4) & 3) - 2);
+				it->g = pPixel.g + (u8)(((nextByte >> 2) & 3) - 2);
+				it->b = pPixel.b + (u8)(((nextByte >> 0) & 3) - 2);
+				it->a = pPixel.a;
 			} else if (t == INDEX) {
-				*dstIt = lookup[cByte & 0x3f];
+				*it = lookup[nextByte & 0x3f];
 			} else if (t == RUN) {
-				u8 runLength = cByte & 0x3f;
+				u8 runLength = nextByte & 0x3f;
 				for (u8 i = 0; i < runLength + 1; i++) {
-					dstIt[i] = pPixel;
+					it[i] = pPixel;
 				}
-				dstIt += runLength;
+				it += runLength;
 			} else if (t == LUMA) {
-				i8 diffG = (cByte & 0x3f) - 32;
-				u8 diffToG; is >> diffToG;
-				i8 diffRG = (diffToG >> 4 & 0xf) - 8;
-				i8 diffBG = (diffToG >> 0 & 0xf) - 8;
-				dstIt->g = pPixel.g + diffG;
-				dstIt->r = pPixel.r + diffG + diffRG;
-				dstIt->b = pPixel.b + diffG + diffBG;
-				dstIt->a = pPixel.a;
+				i8 diffG = (nextByte & 0x3f) - 32;
+				is >> nextByte;
+				i8 diffRG = (nextByte >> 4 & 0xf) - 8;
+				i8 diffBG = (nextByte >> 0 & 0xf) - 8;
+				it->g = pPixel.g + diffG;
+				it->r = pPixel.r + diffG + diffRG;
+				it->b = pPixel.b + diffG + diffBG;
+				it->a = pPixel.a;
 			}
 		}
-		lookup[colorHash(*dstIt)] = pPixel = *dstIt;
-		dstIt++;
+		lookup[colorHash(*it)] = pPixel = *it;
 	}
 	return reinterpret_cast<u8*>(dst);
 }

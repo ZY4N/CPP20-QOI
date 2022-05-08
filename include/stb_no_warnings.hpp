@@ -7,6 +7,12 @@
 #pragma warning(push, 0)
 #endif
 
+/*
+#define STB_IMAGE_IMPLEMENTATION 
+#define STB_IMAGE_STATIC
+#include "../stb/stb_image.h"
+*/
+
 #define STBI_MSC_SECURE_CRT
 #define STB_IMAGE_WRITE_STATIC
 #define STB_IMAGE_WRITE_IMPLEMENTATION

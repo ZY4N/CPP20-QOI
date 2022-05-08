@@ -38,6 +38,19 @@ struct fileInputStream {
 		if constexpr (sizeof(dst) == 1) {
 			if (index == bytesRead) readBuffer();
 			dst = buffer[index++]; 
+		} else if constexpr (sizeof(T) == 4) {
+			size_t bytesLeft = bytesRead - index;
+			uint32_t& dstInt = *(uint32_t*)&dst;
+			if (sizeof(T) <= bytesLeft) [[likely]] {
+				// the compiler knows how to do this efficiently
+				dstInt = *((const uint32_t*)(buffer + index));
+				index += sizeof(T);
+			} else {
+				dstInt = *((const uint32_t*)(buffer + index)) & (UINT32_MAX << (sizeof(T) - bytesLeft));
+				readBuffer();
+				dstInt |= *((const uint32_t*)(buffer + index)) >> bytesLeft;
+				index += sizeof(T) - bytesLeft;
+			}
 		} else {
 			char* dstBytes = (char*)&dst;
 			size_t copyBytes;
