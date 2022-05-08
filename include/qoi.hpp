@@ -2,12 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
-
-typedef signed char		i8;
-typedef signed short	i16;
-typedef signed int		i32;
-typedef signed long		i64;
-typedef ssize_t			ix;
+#include <iostream>
 
 typedef unsigned char	u8;
 typedef unsigned short	u16;
@@ -15,6 +10,26 @@ typedef unsigned int	u32;
 typedef unsigned long	u64;
 typedef size_t			ux;
 
+typedef signed char		i8;
+typedef signed short	i16;
+typedef signed int		i32;
+typedef signed long		i64;
+typedef ssize_t			ix;
+
+#define U8_MAX	(255)
+#define U16_MAX	(65535)
+#define U32_MAX	(4294967295)
+#define U64_MAX	(18446744073709551615)
+
+#define I8_MAX	(127)
+#define I16_MAX	(32767)
+#define I32_MAX	(2147483647)
+#define I64_MAX	(9223372036854775807)
+
+#define I8_MIN	(-128)
+#define I16_MIN	(-32768)
+#define I32_MIN	(-2147483648)
+#define I64_MIN	(-9223372036854775808)
 
 #define force_inline __attribute__((always_inline))
 
@@ -37,7 +52,9 @@ enum class tag : u8 {
 
 struct color {
 	u8 r{ 0 }; u8 g{ 0 }; u8 b{ 0 }; u8 a{ 255 };
-	force_inline bool operator==(const color&) const = default;
+	force_inline operator const u32&() const {
+		return *(const uint32_t*)this;
+	};
 };
 
 force_inline u8 colorHash(const color& c) {
@@ -86,26 +103,22 @@ force_inline void write(OS& os, Args&&... args) {
 }
 
 template<class OS>
-void encode(OS& os, const u8* raw, u32 width, u32 height, u8 channels, u8 colorspace = 0) {
+void encode(OS& os, const u8* src, u32 width, u32 height, u8 channels, u8 colorspace = 0) {
 	color lookup[LOOKUP_SIZE];
 	std::memset((u8*)&lookup, 0, sizeof(lookup));
 
-	const color* pixels = reinterpret_cast<const color*>(raw);
 	color pixel, pPixel;
 	u8 runLength = 0;
 
-	os << magic;
-	os << width;
-	os << height;
-	os << channels;
-	os << colorspace;
+	os << magic << width << height << channels << colorspace;
 
+	const u32 colorMask = U32_MAX >> (8 * (4 - channels));
 	size_t numPixels = width * height;
 	for (ux i = 0; i < numPixels; i++) {
 		pPixel = pixel;
-		pixel = pixels[i];
+		pixel = *(color*)(src + i * channels);
 
-		if (pixel == pPixel) {
+		if ((pixel & colorMask) == (pPixel & colorMask)) {
 			if (runLength++ == MAX_RUN_SIZE || i == numPixels - 1) {
 				write<tag::RUN>(os, runLength - 1);
 				runLength = 0;
@@ -118,14 +131,14 @@ void encode(OS& os, const u8* raw, u32 width, u32 height, u8 channels, u8 colors
 		}
 
 		u8 index = colorHash(pixel);
-		if (lookup[index] == pixel) {
+		if ((lookup[index] & colorMask) == (pixel & colorMask)) {
 			write<tag::INDEX>(os, index);
 			continue;
 		}
 
 		lookup[index] = pixel;
 
-		if (pixel.a == pPixel.a) {
+		if (channels == 3 || pixel.a == pPixel.a) {
 			i16 diffR = (i16)pixel.r - (i16)pPixel.r;
 			i16 diffG = (i16)pixel.g - (i16)pPixel.g;
 			i16 diffB = (i16)pixel.b - (i16)pPixel.b;
@@ -159,52 +172,53 @@ u8* decode(IS& is, u32* width, u32* height, u8* channels, u8* colorspace) {
 	if (std::strncmp(maybeMagic, magic, sizeof(magic)))
 		throw std::runtime_error("Wrong file format");
 
-	is >> *width;
-	is >> *height;
-	is >> *channels;
-	is >> *colorspace;
+	is >> *width >> *height >> *channels >> *colorspace;
 
-	ux numPixels = *width * *height;
-	color* dst = new color[numPixels];
-	const color* end = dst + numPixels;
+	ux pixelSize = (*width) * (*height) * (*channels);
+	u8* pixels = new u8[pixelSize + 1]; // extra byte to make decoding easier/faster
 
-	color& pPixel = *dst; 
+	color pPixel;
+	u8 pixelRun = 0;
 
-	for (color* it = dst; it <= end; it++) {
+	for (ux i = 0; i < pixelSize; i += *channels) {
+		color& pixel = *(color*)(pixels + i);
+
+		if (pixelRun > 0) {
+			pixel = pPixel;
+			pixelRun--;
+			continue;
+		}
+	
 		u8 nextByte; is >> nextByte;
+		const tag t = (tag)(nextByte & 0xc0);
+
 		using enum tag;
 		if (nextByte == (u8)RGB) {
-			is >> it->r >> it->g >> it->b; it->a = 255;
+			is >> pixel.r >> pixel.g >> pixel.b; pixel.a = 255;
 		} else if (nextByte == (u8)RGBA) {
-			is >> *it;
-		} else {
-			const tag t = (tag)(nextByte & 0xc0);
-			if (t == tag::DIFF) {
-				it->r = pPixel.r + (u8)(((nextByte >> 4) & 3) - 2);
-				it->g = pPixel.g + (u8)(((nextByte >> 2) & 3) - 2);
-				it->b = pPixel.b + (u8)(((nextByte >> 0) & 3) - 2);
-				it->a = pPixel.a;
-			} else if (t == INDEX) {
-				*it = lookup[nextByte & 0x3f];
-			} else if (t == RUN) {
-				u8 runLength = nextByte & 0x3f;
-				for (u8 i = 0; i < runLength + 1; i++) {
-					it[i] = pPixel;
-				}
-				it += runLength;
-			} else if (t == LUMA) {
-				i8 diffG = (nextByte & 0x3f) - 32;
-				is >> nextByte;
-				i8 diffRG = (nextByte >> 4 & 0xf) - 8;
-				i8 diffBG = (nextByte >> 0 & 0xf) - 8;
-				it->g = pPixel.g + diffG;
-				it->r = pPixel.r + diffG + diffRG;
-				it->b = pPixel.b + diffG + diffBG;
-				it->a = pPixel.a;
-			}
+			is >> pixel;
+		} else if (t == DIFF) {
+			pixel.r = pPixel.r + (u8)(((nextByte >> 4) & 3) - 2);
+			pixel.g = pPixel.g + (u8)(((nextByte >> 2) & 3) - 2);
+			pixel.b = pPixel.b + (u8)(((nextByte >> 0) & 3) - 2);
+			pixel.a = pPixel.a;
+		} else if (t == INDEX) {
+			pixel = lookup[nextByte & 0x3f];
+		} else if (t == RUN) {
+			pixelRun = nextByte & 0x3f;
+			pixel = pPixel;
+		} else if (t == LUMA) {
+			i8 diffG = (nextByte & 0x3f) - 32;
+			is >> nextByte;
+			i8 diffRG = (nextByte >> 4 & 0xf) - 8;
+			i8 diffBG = (nextByte >> 0 & 0xf) - 8;
+			pixel.g = pPixel.g + diffG;
+			pixel.r = pPixel.r + diffG + diffRG;
+			pixel.b = pPixel.b + diffG + diffBG;
+			pixel.a = pPixel.a;
 		}
-		lookup[colorHash(*it)] = pPixel = *it;
+		lookup[colorHash(pixel)] = pPixel = pixel;
 	}
-	return reinterpret_cast<u8*>(dst);
+	return pixels;
 }
 }
