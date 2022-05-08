@@ -4,7 +4,7 @@ A simple **C++20** implementation of the **qoi** format
 # Reading
 ```c++
 fileInputStream is("input.qoi");
-pixels = qoi::decode(is, &width, &height, &channels, &colorspace);
+uint8_t* pixels = qoi::decode(is, &width, &height, &channels, &colorspace);
 is.close();
 ```
 
