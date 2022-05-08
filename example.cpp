@@ -16,7 +16,7 @@ int main() {
 	
 	// encode and write qoi
 	fileOutputStream os("output.qoi");
-	qoi::encode(os, pixels, width, height, 4);
+	qoi::encode(os, pixels, width, height, channels);
 	os.flush();
 	os.close();
 
