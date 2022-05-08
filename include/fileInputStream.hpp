@@ -5,6 +5,17 @@
 #include <string>
 #include <stdexcept>
 
+#ifndef CONSTEXPR_FOR
+#define CONSTEXPR_FOR
+template <auto Start, auto End, auto Inc, class F>
+constexpr void constexpr_for(F&& f) {
+	if constexpr (Start < End) {
+		f(std::integral_constant<decltype(Start), Start>());
+		constexpr_for<Start + Inc, End, Inc>(f);
+	}
+}
+#endif
+
 struct fileInputStream {
 	int fd;
 	char buffer[1 << 13];
@@ -38,27 +49,37 @@ struct fileInputStream {
 		if constexpr (sizeof(dst) == 1) {
 			if (index == bytesRead) readBuffer();
 			dst = buffer[index++]; 
-		} else if constexpr (sizeof(T) == 4) {
+		} else if (std::is_integral<T>::value) {
 			size_t bytesLeft = bytesRead - index;
-			uint32_t& dstInt = *(uint32_t*)&dst;
+			uint8_t* dstBytes = (uint8_t*)&dst;
 			if (sizeof(T) <= bytesLeft) [[likely]] {
-				// the compiler knows how to do this efficiently
-				dstInt = *((const uint32_t*)(buffer + index));
-				index += sizeof(T);
+				constexpr_for<0, sizeof(T), 1>([&](auto i) {
+					dstBytes[sizeof(T) - 1 - i] = buffer[index++];
+				});
 			} else {
-				dstInt = *((const uint32_t*)(buffer + index)) & (UINT32_MAX << (sizeof(T) - bytesLeft));
+				for (size_t i = 0; i < bytesLeft; i++) {
+					dstBytes[sizeof(T) - 1 - i] = buffer[index++];
+				}
 				readBuffer();
-				dstInt |= *((const uint32_t*)(buffer + index)) >> bytesLeft;
-				index += sizeof(T) - bytesLeft;
+				for (size_t i = bytesLeft; i < sizeof(T); i++) {
+					dstBytes[sizeof(T) - 1 - i] = buffer[index++];
+				}
 			}
 		} else {
-			char* dstBytes = (char*)&dst;
-			size_t copyBytes;
-			for (size_t offset = 0; offset < sizeof(T); offset += copyBytes) {
-				copyBytes = std::min(sizeof(T) - offset, bytesRead - index);	
-				std::copy(buffer + index, buffer + index + copyBytes, &dstBytes[offset]);
-				index += copyBytes;
-				if (copyBytes < sizeof(T) - offset) readBuffer();
+			size_t bytesLeft = bytesRead - index;
+			uint8_t* dstBytes = (uint8_t*)&dst;
+			if (sizeof(T) <= bytesLeft) [[likely]] {
+				constexpr_for<0, sizeof(T), 1>([&](auto i) {
+					dstBytes[i] = buffer[index++];
+				});
+			} else {
+				for (size_t i = 0; i < bytesLeft; i++) {
+					dstBytes[i] = buffer[index++];
+				}
+				readBuffer();
+				for (size_t i = bytesLeft; i < sizeof(T); i++) {
+					dstBytes[i] = buffer[index++];
+				}
 			}
 		}
 		return *this;

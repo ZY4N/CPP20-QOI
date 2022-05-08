@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <iostream>
 
 typedef unsigned char	u8;
 typedef unsigned short	u16;
@@ -36,7 +35,6 @@ typedef ssize_t			ix;
 namespace qoi {
 
 constexpr char magic[]{ 'q', 'o', 'i', 'f' };
-constexpr char end[]{ 0, 0, 0, 1 };
 
 constexpr ux LOOKUP_SIZE	= 64;
 constexpr ux MAX_RUN_SIZE	= 62;
@@ -58,7 +56,7 @@ struct color {
 };
 
 force_inline u8 colorHash(const color& c) {
-	return (c.r * 3 + c.g * 5 + c.b * 7) % LOOKUP_SIZE;
+	return (c.r * 3 + c.g * 5 + c.b * 7 + c.a * 11) % LOOKUP_SIZE;
 }
 
 force_inline u8 fitsSigned(auto num, auto limit) {
@@ -159,7 +157,7 @@ void encode(OS& os, const u8* src, u32 width, u32 height, u8 channels, u8 colors
 			write<tag::RGB>(os, pixel);
 		}
 	}
-	os << 0 << end;
+	os << 0 << 1;
 }
 
 template<class IS>

@@ -5,6 +5,17 @@
 #include <string>
 #include <stdexcept>
 
+#ifndef CONSTEXPR_FOR
+#define CONSTEXPR_FOR
+template <auto Start, auto End, auto Inc, class F>
+constexpr void constexpr_for(F&& f) {
+	if constexpr (Start < End) {
+		f(std::integral_constant<decltype(Start), Start>());
+		constexpr_for<Start + Inc, End, Inc>(f);
+	}
+}
+#endif
+
 struct fileOutputStream {
 	int fd;
 	char buffer[1 << 13];
@@ -37,19 +48,17 @@ struct fileOutputStream {
 		if constexpr (sizeof(T) == 1) {
 			if (index == sizeof(buffer)) flush();
 			buffer[index++] = (char)src;
-		} else if constexpr (sizeof(T) == 4) {
-			if (sizeof(T) > sizeof(buffer) - index) flush();
-			*((uint32_t*)(buffer + index)) = *(const uint32_t*)&src;
-			index += sizeof(T); 
 		} else {
-			const char* srcBytes = reinterpret_cast<const char*>(&src);
-			size_t bytesCopied;
-			for (size_t offset = 0; offset < sizeof(T); offset += bytesCopied) {
-				bytesCopied = std::min(sizeof(T) - offset, sizeof(buffer) - index);	
-				std::copy(&srcBytes[offset], &srcBytes[offset + bytesCopied], &buffer[index]);
-				index += bytesCopied;
-				if (bytesCopied < sizeof(T) - offset) flush();
-			}
+			if (sizeof(T) > sizeof(buffer) - index) flush();
+			const uint8_t* srcBytes = (const uint8_t*)&src;
+			constexpr_for<0, sizeof(T), 1>([&](auto i) {
+				if (std::is_integral<T>::value) {
+					buffer[index++] = srcBytes[sizeof(T) - 1 - i];
+				} else {
+					buffer[index++] = srcBytes[i];
+				}
+			});
+			
 		}
 		return *this;
 	}
