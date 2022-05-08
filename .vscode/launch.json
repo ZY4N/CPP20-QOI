@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/example",
-            "args": [],
+            "args": [ "input.qoi", "suprise.png" ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

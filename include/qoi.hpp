@@ -53,6 +53,10 @@ struct color {
 	force_inline operator const u32&() const {
 		return *(const uint32_t*)this;
 	};
+	force_inline color operator|(u32 mask) {
+		u32 t = ((*(u32*)this) | mask);
+		return *(color*)&t;
+	};
 };
 
 force_inline u8 colorHash(const color& c) {
@@ -110,13 +114,15 @@ void encode(OS& os, const u8* src, u32 width, u32 height, u8 channels, u8 colors
 
 	os << magic << width << height << channels << colorspace;
 
-	const u32 colorMask = U32_MAX >> (8 * (4 - channels));
+	const u32 maskRGB = U32_MAX >> (8 * (4 - channels));
+	const u32 maskA   = U32_MAX << (8 * channels);
+
 	size_t numPixels = width * height;
 	for (ux i = 0; i < numPixels; i++) {
 		pPixel = pixel;
-		pixel = *(color*)(src + i * channels);
+		pixel = *(color*)(src + i * channels) | maskA;
 
-		if ((pixel & colorMask) == (pPixel & colorMask)) {
+		if ((pixel & maskRGB) == (pPixel & maskRGB)) {
 			if (runLength++ == MAX_RUN_SIZE || i == numPixels - 1) {
 				write<tag::RUN>(os, runLength - 1);
 				runLength = 0;
@@ -128,8 +134,9 @@ void encode(OS& os, const u8* src, u32 width, u32 height, u8 channels, u8 colors
 			runLength = 0;
 		}
 
+		
 		u8 index = colorHash(pixel);
-		if ((lookup[index] & colorMask) == (pixel & colorMask)) {
+		if ((lookup[index] & maskRGB) == (pixel & maskRGB)) {
 			write<tag::INDEX>(os, index);
 			continue;
 		}
