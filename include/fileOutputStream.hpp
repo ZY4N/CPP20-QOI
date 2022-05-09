@@ -52,13 +52,12 @@ struct fileOutputStream {
 			if (sizeof(T) > sizeof(buffer) - index) flush();
 			const uint8_t* srcBytes = (const uint8_t*)&src;
 			constexpr_for<0, sizeof(T), 1>([&](auto i) {
-				if (std::is_integral<T>::value) {
+				if constexpr (std::is_integral<T>::value) {
 					buffer[index++] = srcBytes[sizeof(T) - 1 - i];
 				} else {
 					buffer[index++] = srcBytes[i];
 				}
 			});
-			
 		}
 		return *this;
 	}

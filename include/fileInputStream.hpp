@@ -49,36 +49,32 @@ struct fileInputStream {
 		if constexpr (sizeof(dst) == 1) {
 			if (index == bytesRead) readBuffer();
 			dst = buffer[index++]; 
-		} else if (std::is_integral<T>::value) {
-			size_t bytesLeft = bytesRead - index;
-			uint8_t* dstBytes = (uint8_t*)&dst;
-			if (sizeof(T) <= bytesLeft) [[likely]] {
-				constexpr_for<0, sizeof(T), 1>([&](auto i) {
-					dstBytes[sizeof(T) - 1 - i] = buffer[index++];
-				});
-			} else {
-				for (size_t i = 0; i < bytesLeft; i++) {
-					dstBytes[sizeof(T) - 1 - i] = buffer[index++];
-				}
-				readBuffer();
-				for (size_t i = bytesLeft; i < sizeof(T); i++) {
-					dstBytes[sizeof(T) - 1 - i] = buffer[index++];
-				}
-			}
 		} else {
 			size_t bytesLeft = bytesRead - index;
 			uint8_t* dstBytes = (uint8_t*)&dst;
 			if (sizeof(T) <= bytesLeft) [[likely]] {
 				constexpr_for<0, sizeof(T), 1>([&](auto i) {
-					dstBytes[i] = buffer[index++];
+					if constexpr (std::is_integral<T>::value) {
+						dstBytes[sizeof(T) - 1 - i] = buffer[index++];
+					} else {
+						dstBytes[i] = buffer[index++];
+					}
 				});
 			} else {
 				for (size_t i = 0; i < bytesLeft; i++) {
-					dstBytes[i] = buffer[index++];
+					if constexpr (std::is_integral<T>::value) {
+						dstBytes[sizeof(T) - 1 - i] = buffer[index++];
+					} else {
+						dstBytes[i] = buffer[index++];
+					}
 				}
 				readBuffer();
 				for (size_t i = bytesLeft; i < sizeof(T); i++) {
-					dstBytes[i] = buffer[index++];
+					if constexpr (std::is_integral<T>::value) {
+						dstBytes[sizeof(T) - 1 - i] = buffer[index++];
+					} else {
+						dstBytes[i] = buffer[index++];
+					}
 				}
 			}
 		}
