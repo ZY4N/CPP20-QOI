@@ -37,7 +37,7 @@ namespace qoi {
 constexpr char magic[]{ 'q', 'o', 'i', 'f' };
 
 constexpr ux LOOKUP_SIZE	= 64;
-constexpr ux MAX_RUN_SIZE	= 61;
+constexpr ux MAX_RUN_SIZE	= 62;
 
 enum class tag : u8 {
 	INDEX	= 0b00000000,
@@ -63,7 +63,7 @@ force_inline u8 colorHash(const color& c) {
 	return (c.r * 3 + c.g * 5 + c.b * 7 + c.a * 11) % LOOKUP_SIZE;
 }
 
-force_inline u8 fitsSigned(auto num, auto limit) {
+force_inline bool fitsSigned(auto num, auto limit) {
 	return num < limit && num >= -limit;
 }
 
@@ -117,15 +117,13 @@ void encode(OS& os, const u8* src, u32 width, u32 height, u8 channels, u8 colors
 	const u32 maskRGB = U32_MAX >> (8 * (4 - channels));
 	const u32 maskA   = U32_MAX << (8 * channels);
 
-	std::cout << maskA << std::endl;
-
 	size_t numPixels = width * height;
 	for (ux i = 0; i < numPixels; i++) {
 		pPixel = pixel;
 		pixel = *(color*)(src + i * channels) | maskA;
 
 		if ((pixel & maskRGB) == (pPixel & maskRGB)) {
-			if (runLength++ == MAX_RUN_SIZE || i == numPixels - 1) {
+			if (++runLength == MAX_RUN_SIZE || i == numPixels - 1) {
 				write<tag::RUN>(os, runLength - 1);
 				runLength = 0;
 			}
